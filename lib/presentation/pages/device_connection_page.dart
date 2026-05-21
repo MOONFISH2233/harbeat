@@ -153,7 +153,12 @@ class _DeviceConnectionPageState extends ConsumerState<DeviceConnectionPage> {
     if (pairInfo != null) {
       setState(() {
         _selectedDevice = pairInfo;
-        _pairCodeController.clear();
+        // 自动填充配对码（模拟模式下方便测试）
+        if (pairInfo.pairCode != null) {
+          _pairCodeController.text = pairInfo.pairCode!;
+        } else {
+          _pairCodeController.clear();
+        }
         _status = ConnectionStatus.connecting;
       });
     } else {

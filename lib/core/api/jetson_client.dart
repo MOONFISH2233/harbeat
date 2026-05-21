@@ -284,23 +284,33 @@ class JetsonClient {
     String buffer = '';
     await for (final chunk in response.data.stream) {
       buffer += String.fromCharCodes(chunk);
-      final lines = buffer.split('\n\n');
-      buffer = lines.last;
+      final parts = buffer.split('\n\n');
+      buffer = parts.last;
 
-      for (int i = 0; i < lines.length - 1; i++) {
-        final line = lines[i];
-        if (line.startsWith('event:') || line.startsWith('data:')) {
-          final parts = line.split('\n');
-          if (parts.length >= 2 && parts[1].startsWith('data:')) {
-            final jsonStr = parts[1].substring(5).trim();
-            if (jsonStr.isNotEmpty) {
-              try {
-                final data = jsonDecode(jsonStr);
-                yield data;
-              } catch (e) {
-                AppLogger.error('SSE解析失败: $e');
-              }
+      for (int i = 0; i < parts.length - 1; i++) {
+        final part = parts[i];
+        final lines = part.split('\n');
+        String? eventType;
+        String? jsonStr;
+
+        for (final line in lines) {
+          if (line.startsWith('event:')) {
+            eventType = line.substring(6).trim();
+          } else if (line.startsWith('data:')) {
+            jsonStr = line.substring(5).trim();
+          }
+        }
+
+        if (jsonStr != null && jsonStr.isNotEmpty) {
+          try {
+            final data = jsonDecode(jsonStr);
+            // 将事件类型也加入数据中
+            if (eventType != null) {
+              data['event_type'] = eventType;
             }
+            yield data;
+          } catch (e) {
+            AppLogger.error('SSE解析失败: $e, 原始数据: $jsonStr');
           }
         }
       }
@@ -403,7 +413,18 @@ class JetsonClient {
 
   Map<String, dynamic> _unwrapResponse(Response response) {
     if (response.data is Map<String, dynamic>) {
-      return response.data;
+      final data = response.data;
+      // 处理 {"code":0,"data":<T>} 包络格式
+      if (data.containsKey('code') && data.containsKey('data')) {
+        if (data['code'] == 0) {
+          return {'data': data['data']};
+        } else {
+          // 业务错误
+          throw Exception(data['message'] ?? '请求失败');
+        }
+      }
+      // 兼容旧格式
+      return data;
     }
     return {'data': response.data};
   }
